@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Drift</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            cursor: crosshair;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<canvas id="starfieldCanvas"></canvas>
+
+<script>
+    /**
+     * @class Star
+     * Represents a single star in the starfield. Manages its own state,
+     * position, and appearance.
+     */
+    class Star {
+        /**
+         * @param {CanvasRenderingContext2D} ctx The canvas rendering context.
+         * @param {object} mouse The mouse state object with x and y coordinates.
+         */
+        constructor(ctx, mouse) {
+            this.ctx = ctx;
+            this.mouse = mouse;
+            this.reset();
+        }
+
+        /**
+         * Resets the star's properties to a new random state, originating
+         * from the current mouse position.
+         */
+        reset() {
+            this.x = this.mouse.x;
+            this.y = this.mouse.y;
+            this.size = Math.random() * 3 + 0.5; // Size from 0.5 to 3.5
+            this.opacity = Math.random() * 0.5 + 0.5; // Opacity from 0.5 to 1.0
+            
+            const angle = Math.random() * Math.PI * 2;
+            const speed = this.size * 1.5; // Speed is proportional to size
+
+            this.speedX = Math.cos(angle) * speed;
+            this.speedY = Math.sin(angle) * speed;
+            
+            this.color = ''; // Will be set in the update method
+        }
+
+        /**
+         * Updates the star's position and color.
+         * @param {number} hue The current global hue value for color cycling.
+         */
+        update(hue) {
+            this.x += this.speedX;
+            this.y += this.speedY;
+
+            // Update color to cycle through the rainbow based on position
+            this.color = `hsl(${hue + this.x * 0.1}, 100%, 75%)`;
+
+            // Reset if it goes off-screen
+            const { width, height } = this.ctx.canvas;
+            if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                this.reset();
+            }
+        }
+
+        /**
+         * Draws the star on the canvas.
+         */
+        draw() {
+            this.ctx.fillStyle = this.color;
+            this.ctx.globalAlpha = this.opacity;
+            this.ctx.beginPath();
+            this.ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+    }
+
+    /**
+     * @class StarfieldAnimation
+     * Manages the entire starfield animation, including the canvas,
+     * background, stars, and user interaction.
+     */
+    class StarfieldAnimation {
+        /**
+         * @param {string} canvasId The ID of the canvas element.
+         */
+        constructor(canvasId) {
+            this.canvas = document.getElementById(canvasId);
+            this.ctx = this.canvas.getContext('2d');
+            this.stars = [];
+            this.nebulaBackground = null;
+            this.hue = 0;
+
+            this.mouse = {
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+                targetX: window.innerWidth / 2,
+                targetY: window.innerHeight / 2,
+            };
+
+            this._setup();
+        }
+
+        /**
+         * Initializes the canvas, creates the background, populates stars,
+         * and binds event listeners.
+         * @private
+         */
+        _setup() {
+            this._setupCanvas();
+            this._createNebulaBackground();
+            this._initStars();
+            this._bindEvents();
+        }
+
+        /**
+         * Sets the canvas dimensions.
+         * @private
+         */
+        _setupCanvas() {
+            this.canvas.width = window.innerWidth;
+            this.canvas.height = window.innerHeight;
+        }
+
+        /**
+         * Binds necessary event listeners for interactivity and responsiveness.
+         * @private
+         */
+        _bindEvents() {
+            window.addEventListener('resize', () => this._setup());
+            window.addEventListener('mousemove', (event) => {
+                this.mouse.targetX = event.clientX;
+                this.mouse.targetY = event.clientY;
+            });
+        }
+
+        /**
+         * Creates a pre-rendered canvas with a static nebula background for performance.
+         * @private
+         */
+        _createNebulaBackground() {
+            this.nebulaBackground = document.createElement('canvas');
+            this.nebulaBackground.width = this.canvas.width;
+            this.nebulaBackground.height = this.canvas.height;
+            const nebulaCtx = this.nebulaBackground.getContext('2d');
+
+            nebulaCtx.fillStyle = '#02001a';
+            nebulaCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+            const createNebula = (x, y, radius, color1, color2) => {
+                const gradient = nebulaCtx.createRadialGradient(x, y, radius * 0.1, x, y, radius);
+                gradient.addColorStop(0, color1);
+                gradient.addColorStop(1, color2);
+                nebulaCtx.fillStyle = gradient;
+                nebulaCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            };
+            
+            createNebula(this.canvas.width * 0.2, this.canvas.height * 0.3, this.canvas.width * 0.5, 'rgba(100, 0, 150, 0.1)', 'rgba(100, 0, 150, 0)');
+            createNebula(this.canvas.width * 0.8, this.canvas.height * 0.7, this.canvas.width * 0.6, 'rgba(0, 50, 150, 0.15)', 'rgba(0, 50, 150, 0)');
+        }
+
+        /**
+         * Populates the stars array based on screen size.
+         * @private
+         */
+        _initStars() {
+            this.stars = [];
+            const numberOfStars = (this.canvas.width * this.canvas.height) / 5000;
+            for (let i = 0; i < numberOfStars; i++) {
+                this.stars.push(new Star(this.ctx, this.mouse));
+            }
+        }
+
+        /**
+         * Updates the state of the animation (mouse position, stars, hue).
+         * @private
+         */
+        _update() {
+            // Smoothly move the emission point towards the mouse cursor
+            this.mouse.x += (this.mouse.targetX - this.mouse.x) * 0.05;
+            this.mouse.y += (this.mouse.targetY - this.mouse.y) * 0.05;
+
+            // Update each star
+            this.stars.forEach(star => star.update(this.hue));
+
+            // Increment hue for the color cycle
+            this.hue += 0.5;
+        }
+
+        /**
+         * Draws the current frame of the animation.
+         * @private
+         */
+        _draw() {
+            // Draw the static nebula background
+            if (this.nebulaBackground) {
+                this.ctx.globalAlpha = 1;
+                this.ctx.drawImage(this.nebulaBackground, 0, 0);
+            }
+            
+            // Draw a semi-transparent overlay for the trail effect
+            this.ctx.fillStyle = 'rgba(0, 0, 10, 0.1)';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+            // Draw each star
+            this.stars.forEach(star => star.draw());
+        }
+
+        /**
+         * The main animation loop.
+         * @private
+         */
+        _animationLoop() {
+            this._update();
+            this._draw();
+            requestAnimationFrame(() => this._animationLoop());
+        }
+
+        /**
+         * Starts the animation loop.
+         */
+        start() {
+            this._animationLoop();
+        }
+    }
+
+    // --- START ---
+    
+    // Wait for the DOM to be fully loaded before initializing the animation.
+    window.addEventListener('DOMContentLoaded', () => {
+        const starfield = new StarfieldAnimation('starfieldCanvas');
+        starfield.start();
+    });
+
+</script>
+</body>
+</html>
